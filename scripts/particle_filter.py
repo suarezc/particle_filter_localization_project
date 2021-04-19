@@ -16,9 +16,9 @@ import numpy as np
 from numpy.random import random_sample
 import math
 
-from random import randint, random
+from random import randint, random, choice
 
-
+PARTICLE_FIELD_SIZE = 10000
 
 def get_yaw_from_pose(p):
     """ A helper function that takes in a Pose object (geometry_msgs) and returns yaw"""
@@ -75,7 +75,7 @@ class ParticleFilter:
         self.map = OccupancyGrid()
 
         # the number of particles used in the particle filter
-        self.num_particles = 10000
+        self.num_particles = PARTICLE_FIELD_SIZE
 
         # initialize the particle cloud array
         self.particle_cloud = []
@@ -110,6 +110,7 @@ class ParticleFilter:
 
 
         # intialize the particle cloud
+        rospy.sleep(1)
         self.initialize_particle_cloud()
 
         self.initialized = True
@@ -122,19 +123,61 @@ class ParticleFilter:
     
 
     def initialize_particle_cloud(self):
-        
-        # TODO
+        # Loop through each x,y pair
+        free_coordinates = []
+        curr = 0
+        for x in range(self.map.info.width):
+            for y in range(self.map.info.height):
 
+                # Occupancy grids are stored in row major order
+                ind = x + y * self.map.info.width
+                if self.map.data[ind] == 0:
+                    orientation = ((np.random.randint(360) / 180) * np.pi)
+                    x_adjusted = (x * self.map.info.resolution) + self.map.info.origin.position.x
+                    y_adjusted = (y * self.map.info.resolution) + self.map.info.origin.position.y
+                    free_coordinates.append([float(x_adjusted), float(y_adjusted), orientation])
+                    curr += 1
+
+        self.particle_cloud = []
+
+        # Draw randomly from above list for each particle
+        for i in range(0, PARTICLE_FIELD_SIZE):
+            initial_particle_set = choice(free_coordinates)
+            p = Pose()
+            p.position = Point()
+            p.position.x = initial_particle_set[0]
+            p.position.y = initial_particle_set[1]
+            p.position.z = 0
+            p.orientation = Quaternion()
+            q = quaternion_from_euler(0.0, 0.0, initial_particle_set[2])
+            p.orientation.x = q[0]
+            p.orientation.y = q[1]
+            p.orientation.z = q[2]
+            p.orientation.w = q[3]
+
+            # initialize the new particle, where all will have the same weight (1.0)
+            new_particle = Particle(p, 1.0)
+
+            # append the particle to the particle cloud
+            self.particle_cloud.append(new_particle)
 
         self.normalize_particles()
-
         self.publish_particle_cloud()
 
 
     def normalize_particles(self):
         # make all the particle weights sum to 1.0
         
-        # TODO
+        # First, calculate sum
+        weight_sum = 0.0
+        for p in self.particle_cloud:
+            weight_sum += p.w
+
+        # Now, renormalize with n
+        for p in self.particle_cloud:
+            p.w = p.w / weight_sum
+        
+        return
 
 
 
@@ -164,6 +207,7 @@ class ParticleFilter:
     def resample_particles(self):
 
         # TODO
+        return
 
 
 
@@ -243,22 +287,75 @@ class ParticleFilter:
         # based on the particles within the particle cloud, update the robot pose estimate
         
         # TODO
+        return
 
 
     
     def update_particle_weights_with_measurement_model(self, data):
 
         # TODO
+        return
 
 
         
 
     def update_particles_with_motion_model(self):
-
         # based on the how the robot has moved (calculated from its odometry), we'll  move
         # all of the particles correspondingly
+        curr_x = self.odom_pose.pose.position.x
+        old_x = self.odom_pose_last_motion_update.pose.position.x
+        curr_y = self.odom_pose.pose.position.y
+        old_y = self.odom_pose_last_motion_update.pose.position.y
 
-        # TODO
+        distance_moved = math.sqrt(((curr_x - old_x) ** 2) + ((curr_y - old_y) ** 2))
+
+        curr_yaw = get_yaw_from_pose(self.odom_pose.pose)
+        old_yaw = get_yaw_from_pose(self.odom_pose_last_motion_update.pose)
+
+        x_pos = False
+        if curr_x - old_x > 0:
+            x_pos = True
+
+        y_pos = False
+        if curr_y - old_y > 0:
+            y_pos = True
+
+        moving_backwards = False
+        working_yaw = curr_yaw % (2 * np.pi)
+        if working_yaw <= np.pi / 2:
+            moving_backwards = not x_pos or not y_pos
+        elif working_yaw <= np.pi:
+            moving_backwards = x_pos or not y_pos
+        elif working_yaw <= (3 * np.pi) / 2:
+            moving_backwards = x_pos or y_pos
+        elif working_yaw <= 2 * np.pi:
+            moving_backwards = not x_pos or y_pos
+        else:
+            print("ERROR: yaw is outside of range")
+            print("original yaw:", curr_yaw, "working_yaw:", working_yaw, end="\n\n")
+        
+        if moving_backwards:
+            distance_moved *= -1
+
+
+        distance_turned = (old_yaw - curr_yaw) % (2 * np.pi)
+
+        for p in self.particle_cloud:
+            particle_yaw = get_yaw_from_pose(p.pose)
+
+            p.pose.position.x += math.cos(particle_yaw) * distance_moved
+            p.pose.position.y += math.sin(particle_yaw) * distance_moved
+
+            new_yaw = (particle_yaw - distance_turned) % (2 * np.pi)
+            q = quaternion_from_euler(0.0, 0.0, new_yaw)
+            p.pose.orientation.x = q[0]
+            p.pose.orientation.y = q[1]
+            p.pose.orientation.z = q[2]
+            p.pose.orientation.w = q[3]
+
+        
+
+
 
 
 
