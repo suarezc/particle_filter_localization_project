@@ -11,12 +11,13 @@ import tf
 from tf import TransformListener
 from tf import TransformBroadcaster
 from tf.transformations import quaternion_from_euler, euler_from_quaternion
+from sklearn.neighbors import NearestNeighbors
 
 import numpy as np
 from numpy.random import random_sample
 import math
 
-from random import randint, random, choice
+from random import randint, random, choice, choices
 
 PARTICLE_FIELD_SIZE = 10000
 
@@ -50,6 +51,15 @@ class Particle:
 
         # particle weight
         self.w = w
+
+    
+    def __str__(self):
+        theta = euler_from_quaternion([
+            self.pose.orientation.x, 
+            self.pose.orientation.y, 
+            self.pose.orientation.z, 
+            self.pose.orientation.w])[2]
+        return ("Particle: [" + str(self.pose.position.x) + ", " + str(self.pose.position.y) + ", " + str(theta) + "]")
 
 
 
@@ -108,10 +118,53 @@ class ParticleFilter:
         self.tf_listener = TransformListener()
         self.tf_broadcaster = TransformBroadcaster()
 
+        # The coordinates of each grid cell in the map  
+        X = np.zeros((self.map.info.width*self.map.info.height, 2))
+
+        # while we're at it let's count the number of occupied cells
+        total_occupied = 0
+        curr = 0
+        for i in range(self.map.info.width):
+            for j in range(self.map.info.height):
+                # occupancy grids are stored in row major order
+                ind = i + j*self.map.info.width
+                if self.map.data[ind] > 0:
+                    total_occupied += 1
+                X[curr, 0] = float(i)
+                X[curr, 1] = float(j)
+                curr += 1
+
+
+        # The coordinates of each occupied grid cell in the map
+        occupied = np.zeros((total_occupied, 2))
+        curr = 0
+        for i in range(self.map.info.width):
+            for j in range(self.map.info.height):
+                # occupancy grids are stored in row major order
+                ind = i + j*self.map.info.width
+                if self.map.data[ind] > 0:
+                    occupied[curr, 0] = float(i)
+                    occupied[curr, 1] = float(j)
+                    curr += 1
+        # use super fast scikit learn nearest neighbor algorithm
+        nbrs = NearestNeighbors(n_neighbors=1,
+                                algorithm="ball_tree").fit(occupied)
+        distances, indices = nbrs.kneighbors(X)
+
+        self.closest_occ = np.zeros((self.map.info.width, self.map.info.height))
+        curr = 0
+        for i in range(self.map.info.width):
+            for j in range(self.map.info.height):
+                self.closest_occ[i, j] = \
+                    distances[curr][0]*self.map.info.resolution
+                curr += 1
+        self.occupied = occupied
+
 
         # intialize the particle cloud
         rospy.sleep(1)
         self.initialize_particle_cloud()
+
 
         self.initialized = True
 
@@ -137,12 +190,24 @@ class ParticleFilter:
                     y_adjusted = (y * self.map.info.resolution) + self.map.info.origin.position.y
                     free_coordinates.append([float(x_adjusted), float(y_adjusted), orientation])
                     curr += 1
+        
+        
 
         self.particle_cloud = []
+
+
 
         # Draw randomly from above list for each particle
         for i in range(0, PARTICLE_FIELD_SIZE):
             initial_particle_set = choice(free_coordinates)
+        #     initial_particle_sets = [
+        #     [0.0, 0.0, 0.0],
+        #     [-6.6, -3.5, np.pi],
+        #     [5.8, -5.0, (np.pi / 2.0)],
+        #     [-2.2, 4.5, (np.pi / 2.0)],
+        #     [-3, 1, 0.0]
+        # ]
+            #initial_particle_set = initial_particle_sets[i]
             p = Pose()
             p.position = Point()
             p.position.x = initial_particle_set[0]
@@ -191,6 +256,8 @@ class ParticleFilter:
             particle_cloud_pose_array.poses.append(part.pose)
 
         self.particles_pub.publish(particle_cloud_pose_array)
+        print(len(self.particle_cloud))
+
 
 
 
@@ -206,7 +273,16 @@ class ParticleFilter:
 
     def resample_particles(self):
 
-        # TODO
+        new_particles = []
+        particle_weights = []
+
+        for p in self.particle_cloud:
+            particle_weights.append(p.w)
+            #print(p.w)
+
+        new_particles = choices(population = self.particle_cloud, k = PARTICLE_FIELD_SIZE, weights = particle_weights)
+        self.particle_cloud = new_particles
+
         return
 
 
@@ -266,11 +342,14 @@ class ParticleFilter:
 
                 # This is where the main logic of the particle filter is carried out
 
+                #dibe
                 self.update_particles_with_motion_model()
-
+                #done
                 self.update_particle_weights_with_measurement_model(data)
 
+                #done
                 self.normalize_particles()
+
 
                 self.resample_particles()
 
@@ -280,6 +359,7 @@ class ParticleFilter:
                 self.publish_estimated_robot_pose()
 
                 self.odom_pose_last_motion_update = self.odom_pose
+                print("\n\n")
 
 
 
@@ -289,12 +369,65 @@ class ParticleFilter:
         # TODO
         return
 
+    #From Class06 likelihood_field.py
+    def get_closest_obstacle_distance(self, x, y):
+        """ Compute the closest obstacle to the specified (x,y) coordinate in
+            the map.  If the (x,y) coordinate is out of the map boundaries, nan
+            will be returned. """
+        x_coord = (x - self.map.info.origin.position.x)/self.map.info.resolution
+        y_coord = (y - self.map.info.origin.position.y)/self.map.info.resolution
+        if type(x) is np.ndarray:
+            x_coord = x_coord.astype(np.int)
+            y_coord = y_coord.astype(np.int)
+        else:
+            x_coord = int(x_coord)
+            y_coord = int(y_coord)
 
+        is_valid = (x_coord >= 0) & (y_coord >= 0) & (x_coord < self.map.info.width) & (y_coord < self.map.info.height)
+        if type(x) is np.ndarray:
+            distances = np.float('nan')*np.ones(x_coord.shape)
+            distances[is_valid] = self.closest_occ[x_coord[is_valid], y_coord[is_valid]]
+            return distances
+        else:
+            return self.closest_occ[x_coord, y_coord] if is_valid else float('nan')
+    
+    def compute_prob_zero_centered_gaussian(self, dist, sd):
+        """ Takes in distance from zero (dist) and standard deviation (sd) for gaussian
+        and returns probability (likelihood) of observation """
+        c = 1.0 / (sd * math.sqrt(2 * math.pi))
+        prob = c * math.exp((-math.pow(dist,2))/(2 * math.pow(sd, 2)))
+        return prob
     
     def update_particle_weights_with_measurement_model(self, data):
 
-        # TODO
-        return
+        for p in self.particle_cloud:
+            x = p.pose.position.x
+            y = p.pose.position.y
+            theta = get_yaw_from_pose(p.pose)
+
+            #print(str(p))
+            #print("theta: ", theta)
+            q = 1
+            for angle in [0,90,180,270]:
+                zkt = data.ranges[angle]
+                if zkt == float("inf"):
+                    zkt = 3.5
+               # print(angle)
+               # print("zkt: ", zkt)
+                xzkt = x + zkt * math.cos(theta + (angle * math.pi/180))
+                yzkt = y + zkt * math.sin(theta + (angle * math.pi/180))
+               # print("xzkt: " + str(xzkt) + " yzkt " + str(yzkt))
+                dist = self.get_closest_obstacle_distance(xzkt, yzkt)
+                if math.isnan(dist):
+                    dist = 3.5
+               # print("dist: " , dist)
+               # print("prob: " ,self.compute_prob_zero_centered_gaussian(dist, 0.1))
+                q = q * self.compute_prob_zero_centered_gaussian(dist, 0.1)
+                #print("q is " + str(q))
+            if math.isnan(q):
+                q = 0
+            p.w = q
+            #print("total:" + str(q) + "\n")
 
 
         
