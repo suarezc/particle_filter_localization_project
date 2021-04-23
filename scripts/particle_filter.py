@@ -19,7 +19,7 @@ import math
 
 from random import randint, random, choice, choices
 
-PARTICLE_FIELD_SIZE = 1000#0
+PARTICLE_FIELD_SIZE = 10
 
 def get_yaw_from_pose(p):
     """ A helper function that takes in a Pose object (geometry_msgs) and returns yaw"""
@@ -237,10 +237,21 @@ class ParticleFilter:
         weight_sum = 0.0
         for p in self.particle_cloud:
             weight_sum += p.w
+        
+        print(weight_sum)
 
         # Now, renormalize with n
         for p in self.particle_cloud:
             p.w = p.w / weight_sum
+            if p.w == float('inf'):
+                print("I am large and in charge")
+
+
+        weight_sum = 0.0
+        for p in self.particle_cloud:
+            weight_sum += p.w
+        print("normalized: ", weight_sum)
+
         
         return
 
@@ -278,9 +289,19 @@ class ParticleFilter:
 
         for p in self.particle_cloud:
             particle_weights.append(p.w)
-            #print(p.w)
+            print(str(p))
+            print(p.w)
 
         new_particles = choices(population = self.particle_cloud, k = PARTICLE_FIELD_SIZE, weights = particle_weights)
+
+        for p in new_particles:
+            print(str(p))
+            p.pose.position.x = np.random.normal(p.pose.position.x, scale = 0.4)
+            p.pose.position.y = np.random.normal(p.pose.position.y, scale = 0.4)
+
+            p.pose.orientation.z = np.random.normal(p.pose.orientation.z, scale = 0.1)
+            print(str(p))
+            
         self.particle_cloud = new_particles
 
         return
@@ -405,31 +426,31 @@ class ParticleFilter:
             y = p.pose.position.y
             theta = get_yaw_from_pose(p.pose)
 
-            # print(str(p))
+            print(str(p))
             # print("theta: ", theta)
             q = 1
-            for angle in range(0, 360, 10):
+            for angle in [0,90,180,270]:
                 zkt = data.ranges[angle]
                 if zkt == float("inf"):
                     continue
-                # print(angle)
+                print("angle: ", angle)
                 # print("zkt: ", zkt)
                 xzkt = x + zkt * math.cos(theta + (angle * math.pi/180))
                 yzkt = y + zkt * math.sin(theta + (angle * math.pi/180))
                 # print("xzkt: " + str(xzkt) + " yzkt " + str(yzkt))
                 dist = self.get_closest_obstacle_distance(xzkt, yzkt)
                 if math.isnan(dist):
-                    dist = 3.5
-                # print("dist: " , dist)
+                    continue
+                print("dist: " , dist)
                 # print("prob: " ,self.compute_prob_zero_centered_gaussian(dist, 0.1))
-                q = q * self.compute_prob_zero_centered_gaussian(dist, 0.1)
-                # print("q is " + str(q))
+                q = q * (self.compute_prob_zero_centered_gaussian(dist, 0.1) + 0.5)
+                print("q is " + str(q))
             if math.isnan(q):
                 q = 0.0
             p.w = q
             # if q > 0:
             #     print(str(p))
-            #     print("total:" + str(q) + "\n")
+            print("total:" + str(q) + "\n")
 
 
         
@@ -474,6 +495,13 @@ class ParticleFilter:
 
 
         distance_turned = (old_yaw - curr_yaw) % (2 * np.pi)
+
+        # if(distance_moved != 0):
+        #     noisy_distance_moved = np.random.normal(distance_moved, abs(distance_moved/10))
+
+        # if(distance_turned != 0):
+        #     noisy_distance_turned = np.random.normal(distance_turned, distance_turned/10) % (2 * np.pi)
+
 
         for p in self.particle_cloud:
             particle_yaw = get_yaw_from_pose(p.pose)
