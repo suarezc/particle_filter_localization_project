@@ -19,7 +19,7 @@ import math
 
 from random import randint, random, choice, choices
 
-PARTICLE_FIELD_SIZE = 10000
+PARTICLE_FIELD_SIZE = 1000#0
 
 def get_yaw_from_pose(p):
     """ A helper function that takes in a Pose object (geometry_msgs) and returns yaw"""
@@ -405,29 +405,31 @@ class ParticleFilter:
             y = p.pose.position.y
             theta = get_yaw_from_pose(p.pose)
 
-            #print(str(p))
-            #print("theta: ", theta)
+            # print(str(p))
+            # print("theta: ", theta)
             q = 1
-            for angle in [0,90,180,270]:
+            for angle in range(0, 360, 10):
                 zkt = data.ranges[angle]
                 if zkt == float("inf"):
-                    zkt = 3.5
-               # print(angle)
-               # print("zkt: ", zkt)
+                    continue
+                # print(angle)
+                # print("zkt: ", zkt)
                 xzkt = x + zkt * math.cos(theta + (angle * math.pi/180))
                 yzkt = y + zkt * math.sin(theta + (angle * math.pi/180))
-               # print("xzkt: " + str(xzkt) + " yzkt " + str(yzkt))
+                # print("xzkt: " + str(xzkt) + " yzkt " + str(yzkt))
                 dist = self.get_closest_obstacle_distance(xzkt, yzkt)
                 if math.isnan(dist):
                     dist = 3.5
-               # print("dist: " , dist)
-               # print("prob: " ,self.compute_prob_zero_centered_gaussian(dist, 0.1))
+                # print("dist: " , dist)
+                # print("prob: " ,self.compute_prob_zero_centered_gaussian(dist, 0.1))
                 q = q * self.compute_prob_zero_centered_gaussian(dist, 0.1)
-                #print("q is " + str(q))
+                # print("q is " + str(q))
             if math.isnan(q):
-                q = 0
+                q = 0.0
             p.w = q
-            #print("total:" + str(q) + "\n")
+            # if q > 0:
+            #     print(str(p))
+            #     print("total:" + str(q) + "\n")
 
 
         
