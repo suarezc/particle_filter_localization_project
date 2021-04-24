@@ -19,7 +19,7 @@ import math
 
 from random import randint, random, choice, choices
 
-PARTICLE_FIELD_SIZE = 1000
+PARTICLE_FIELD_SIZE = 3000
 
 
 def get_yaw_from_pose(p):
@@ -301,8 +301,8 @@ class ParticleFilter:
             # Make a deep copy of the chosen particle's position, "noising" x,y of pose and z of quaternion
             new_pose = Pose()
             new_pose.position = Point()
-            new_pose.position.x = np.random.normal(p.pose.position.x, scale = 0.4)
-            new_pose.position.y = np.random.normal(p.pose.position.y, scale = 0.4)
+            new_pose.position.x = np.random.normal(p.pose.position.x, scale = 0.3)
+            new_pose.position.y = np.random.normal(p.pose.position.y, scale = 0.3)
             new_pose.position.z = p.pose.position.z
 
             new_pose.orientation = Quaternion()
@@ -401,9 +401,28 @@ class ParticleFilter:
 
     def update_estimated_robot_pose(self):
         # Go through every particle and calculate average x, y, and yaw
-        for p in self.particle_cloud:
-            
+        robot_pose = Pose()
 
+        x_pose, y_pose, z_pose = 0, 0, 0
+
+        for p in self.particle_cloud:
+            x_pose += p.pose.position.x
+            y_pose += p.pose.position.y
+            z_pose += euler_from_quaternion([
+                      p.pose.orientation.x, 
+                      p.pose.orientation.y, 
+                      p.pose.orientation.z, 
+                      p.pose.orientation.w])[2]
+        
+        robot_pose.position.x = x_pose/PARTICLE_FIELD_SIZE
+        robot_pose.position.y = y_pose/PARTICLE_FIELD_SIZE
+        q = quaternion_from_euler(0.0, 0.0, z_pose/PARTICLE_FIELD_SIZE)
+        robot_pose.orientation.x = q[0]
+        robot_pose.orientation.y = q[1]
+        robot_pose.orientation.z = q[2]
+        robot_pose.orientation.w = q[3]
+
+        self.robot_estimate = robot_pose   
         return
 
     #From Class06 likelihood_field.py
@@ -456,7 +475,7 @@ class ParticleFilter:
                 # print("xzkt: " + str(xzkt) + " yzkt " + str(yzkt))
                 dist = self.get_closest_obstacle_distance(xzkt, yzkt)
                 if math.isnan(dist):
-                    continue
+                    q = 0.0
                 # print("dist: " , dist)
                 # print("prob: " ,self.compute_prob_zero_centered_gaussian(dist, 0.1))
                 q = q * (self.compute_prob_zero_centered_gaussian(dist, 0.5))
