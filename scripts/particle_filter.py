@@ -19,7 +19,7 @@ import math
 
 from random import randint, random, choice, choices
 
-PARTICLE_FIELD_SIZE = 3000
+PARTICLE_FIELD_SIZE = 5000
 
 
 def get_yaw_from_pose(p):
@@ -120,6 +120,7 @@ class ParticleFilter:
         self.tf_broadcaster = TransformBroadcaster()
 
         # The coordinates of each grid cell in the map  
+        rospy.sleep(1)
         X = np.zeros((self.map.info.width*self.map.info.height, 2))
 
         # while we're at it let's count the number of occupied cells
@@ -464,7 +465,8 @@ class ParticleFilter:
             # print(str(p))
             # print("theta: ", theta)
             q = 1
-            for angle in range(0, 360):
+            # for angle in range(0, 360):
+            for angle in range(0, 360, 45):
                 zkt = data.ranges[angle]
                 if zkt == float("inf"):
                     continue
