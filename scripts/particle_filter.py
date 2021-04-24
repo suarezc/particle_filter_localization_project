@@ -53,7 +53,7 @@ class Particle:
         # particle weight
         self.w = w
 
-    
+    #Borrowed from lecture example for representing particle
     def __str__(self):
         theta = euler_from_quaternion([
             self.pose.orientation.x, 
@@ -202,14 +202,6 @@ class ParticleFilter:
         # Draw randomly from above list for each particle
         for i in range(0, PARTICLE_FIELD_SIZE):
             initial_particle_set = choice(free_coordinates)
-        #     initial_particle_sets = [
-        #     [0.0, 0.0, 0.0],
-        #     [-6.6, -3.5, np.pi],
-        #     [5.8, -5.0, (np.pi / 2.0)],
-        #     [-2.2, 4.5, (np.pi / 2.0)],
-        #     [-3, 1, 0.0]
-        # ]
-            #initial_particle_set = initial_particle_sets[i]
             p = Pose()
             p.position = Point()
             p.position.x = initial_particle_set[0]
@@ -239,26 +231,16 @@ class ParticleFilter:
         weight_sum = 0.0
         for p in self.particle_cloud:
             weight_sum += p.w
-        
-        # print(weight_sum)
 
         # Now, renormalize with n
         for p in self.particle_cloud:
             p.w = p.w / weight_sum
-            # if p.w == float('inf'):
-            #     print("I am large and in charge")
-
-
-        weight_sum = 0.0
-        for p in self.particle_cloud:
-            weight_sum += p.w
-        # print("normalized: ", weight_sum)
-
         
         return
 
 
 
+    #provided in starter code, just publishes our particle cloud
     def publish_particle_cloud(self):
 
         particle_cloud_pose_array = PoseArray()
@@ -269,12 +251,11 @@ class ParticleFilter:
             particle_cloud_pose_array.poses.append(part.pose)
 
         self.particles_pub.publish(particle_cloud_pose_array)
-        # print(len(self.particle_cloud))
 
 
 
 
-
+    #publishes robot pose, provided in starter code
     def publish_estimated_robot_pose(self):
 
         robot_pose_estimate_stamped = PoseStamped()
@@ -292,10 +273,9 @@ class ParticleFilter:
         # First, choose your particles based on their weights
         for p in self.particle_cloud:
             particle_weights.append(p.w)
-            # print(str(p))
-            # print(p.w)
-        # print("Resampling from", len(particle_weights), "weights")
+
         chosen_particles = choices(population = self.particle_cloud, k = PARTICLE_FIELD_SIZE, weights = particle_weights)
+
 
         # Now, we create our new particle field
         for p in chosen_particles:
@@ -379,12 +359,10 @@ class ParticleFilter:
 
                 # This is where the main logic of the particle filter is carried out
 
-                #dibe
                 self.update_particles_with_motion_model()
-                #done
+
                 self.update_particle_weights_with_measurement_model(data)
 
-                #done
                 self.normalize_particles()
 
 
@@ -396,7 +374,6 @@ class ParticleFilter:
                 self.publish_estimated_robot_pose()
 
                 self.odom_pose_last_motion_update = self.odom_pose
-                # print("================================================================")
 
 
 
@@ -406,6 +383,7 @@ class ParticleFilter:
 
         x_pose, y_pose, z_pose = 0, 0, 0
 
+        #Take the sum of all the particles' x, y, and z positions and orientations, and average them by num of particles
         for p in self.particle_cloud:
             x_pose += p.pose.position.x
             y_pose += p.pose.position.y
@@ -423,6 +401,7 @@ class ParticleFilter:
         robot_pose.orientation.z = q[2]
         robot_pose.orientation.w = q[3]
 
+        #set our estimate to the resultant calculation
         self.robot_estimate = robot_pose   
         return
 
@@ -448,6 +427,7 @@ class ParticleFilter:
         else:
             return self.closest_occ[x_coord, y_coord] if is_valid else float('nan')
     
+    #From Class06 code provided during lecture
     def compute_prob_zero_centered_gaussian(self, dist, sd):
         """ Takes in distance from zero (dist) and standard deviation (sd) for gaussian
         and returns probability (likelihood) of observation """
@@ -457,37 +437,37 @@ class ParticleFilter:
     
     def update_particle_weights_with_measurement_model(self, data):
 
+        #run for each particle in the cloud
         for p in self.particle_cloud:
+
+            #get relevant coords for the point
             x = p.pose.position.x
             y = p.pose.position.y
             theta = get_yaw_from_pose(p.pose)
 
-            # print(str(p))
-            # print("theta: ", theta)
             q = 1
-            # for angle in range(0, 360):
             for angle in range(0, 360, 10):
                 zkt = data.ranges[angle]
+                #wxperimentation determined this is a valid way to deal with infs
                 if zkt == float("inf"):
                     continue
-                # print("angle: ", angle)
-                # print("zkt: ", zkt)
+
                 xzkt = x + zkt * math.cos(theta + (angle * math.pi/180))
                 yzkt = y + zkt * math.sin(theta + (angle * math.pi/180))
-                # print("xzkt: " + str(xzkt) + " yzkt " + str(yzkt))
+
                 dist = self.get_closest_obstacle_distance(xzkt, yzkt)
+
+                #wxperimentation determined this is a valid way to deal with nans
                 if math.isnan(dist):
                     continue
-                # print("dist: " , dist)
-                # print("prob: " ,self.compute_prob_zero_centered_gaussian(dist, 0.1))
+
+
                 q = q * (self.compute_prob_zero_centered_gaussian(dist, 0.3))
-                # print("q is " + str(q))
+
+            #this conditional shouldn't trigger based on our past checks but if it does we shouldn't use it.
             if math.isnan(q):
                 continue
             p.w = q
-            # if q > 0:
-            # print("q is:", q, "\n")
-            # print("total:" + str(q) + "\n")
 
 
         
@@ -500,11 +480,13 @@ class ParticleFilter:
         curr_y = self.odom_pose.pose.position.y
         old_y = self.odom_pose_last_motion_update.pose.position.y
 
+        #distance equation
         distance_moved = math.sqrt(((curr_x - old_x) ** 2) + ((curr_y - old_y) ** 2))
 
         curr_yaw = get_yaw_from_pose(self.odom_pose.pose)
         old_yaw = get_yaw_from_pose(self.odom_pose_last_motion_update.pose)
 
+        #The following code is used to determine whether the robot is moving in reverse since our distance is always positive
         x_pos = False
         if curr_x - old_x > 0:
             x_pos = True
@@ -513,8 +495,12 @@ class ParticleFilter:
         if curr_y - old_y > 0:
             y_pos = True
 
+
         moving_backwards = False
         working_yaw = curr_yaw % (2 * np.pi)
+
+        #use the unit circle to determine if based on the sign of the x and y if we are moving forward or backwards
+        #ex. if robot is facing between pi/2 and pi, it is moving backwards if x is positive or y is negative
         if working_yaw <= np.pi / 2:
             moving_backwards = not x_pos or not y_pos
         elif working_yaw <= np.pi:
@@ -531,15 +517,11 @@ class ParticleFilter:
             distance_moved *= -1
 
 
+        #calculate difference in yaw to turn
         distance_turned = (old_yaw - curr_yaw) % (2 * np.pi)
 
-        # if(distance_moved != 0):
-        #     noisy_distance_moved = np.random.normal(distance_moved, abs(distance_moved/10))
 
-        # if(distance_turned != 0):
-        #     noisy_distance_turned = np.random.normal(distance_turned, distance_turned/10) % (2 * np.pi)
-
-
+        #implement movement for each particle based on our measurements and calculations
         for p in self.particle_cloud:
             particle_yaw = get_yaw_from_pose(p.pose)
 
@@ -553,12 +535,8 @@ class ParticleFilter:
             p.pose.orientation.z = q[2]
             p.pose.orientation.w = q[3]
 
-        
 
-
-
-
-
+#Creates our particle filter and listens with rospy.spin.
 if __name__=="__main__":
     
 
