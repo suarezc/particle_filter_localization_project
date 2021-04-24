@@ -19,7 +19,7 @@ import math
 
 from random import randint, random, choice, choices
 
-PARTICLE_FIELD_SIZE = 5000
+PARTICLE_FIELD_SIZE = 3000
 
 
 def get_yaw_from_pose(p):
@@ -302,8 +302,8 @@ class ParticleFilter:
             # Make a deep copy of the chosen particle's position, "noising" x,y of pose and z of quaternion
             new_pose = Pose()
             new_pose.position = Point()
-            new_pose.position.x = np.random.normal(p.pose.position.x, scale = 0.3)
-            new_pose.position.y = np.random.normal(p.pose.position.y, scale = 0.3)
+            new_pose.position.x = np.random.normal(p.pose.position.x, scale = 0.2)
+            new_pose.position.y = np.random.normal(p.pose.position.y, scale = 0.2)
             new_pose.position.z = p.pose.position.z
 
             new_pose.orientation = Quaternion()
@@ -466,7 +466,7 @@ class ParticleFilter:
             # print("theta: ", theta)
             q = 1
             # for angle in range(0, 360):
-            for angle in range(0, 360, 45):
+            for angle in range(0, 360, 10):
                 zkt = data.ranges[angle]
                 if zkt == float("inf"):
                     continue
@@ -477,13 +477,13 @@ class ParticleFilter:
                 # print("xzkt: " + str(xzkt) + " yzkt " + str(yzkt))
                 dist = self.get_closest_obstacle_distance(xzkt, yzkt)
                 if math.isnan(dist):
-                    q = 0.0
+                    continue
                 # print("dist: " , dist)
                 # print("prob: " ,self.compute_prob_zero_centered_gaussian(dist, 0.1))
-                q = q * (self.compute_prob_zero_centered_gaussian(dist, 0.5))
+                q = q * (self.compute_prob_zero_centered_gaussian(dist, 0.3))
                 # print("q is " + str(q))
             if math.isnan(q):
-                q = 0.0
+                continue
             p.w = q
             # if q > 0:
             # print("q is:", q, "\n")
