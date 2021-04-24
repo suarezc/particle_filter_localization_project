@@ -448,7 +448,7 @@ class ParticleFilter:
             q = 1
             for angle in range(0, 360, 10):
                 zkt = data.ranges[angle]
-                #wxperimentation determined this is a valid way to deal with infs
+                #experimentation determined this is a valid way to deal with infs
                 if zkt == float("inf"):
                     continue
 
@@ -457,7 +457,7 @@ class ParticleFilter:
 
                 dist = self.get_closest_obstacle_distance(xzkt, yzkt)
 
-                #wxperimentation determined this is a valid way to deal with nans
+                #experimentation determined this is a valid way to deal with nans
                 if math.isnan(dist):
                     continue
 
